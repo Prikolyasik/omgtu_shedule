@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OMGTU.SCHEDULE</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <!-- Навигация -->
+    <nav class="navbar navbar-expand-lg fixed-top">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="#">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="" style="height: 56px; width: 56px; object-fit: contain; margin-right: 0.5rem;">Расписание ОмГТУ
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#" data-section="schedule-section">
+                            <i class="bi bi-calendar-week me-1"></i>Расписание
+                        </a>
+                    </li>
+                    <li class="nav-item" id="consultations-nav" style="display: none;">
+                        <a class="nav-link" href="#" data-section="consultations-section">
+                            <i class="bi bi-chat-dots me-1"></i>Консультации
+                        </a>
+                    </li>
+                    <li class="nav-item" id="changes-nav" style="display: none;">
+                        <a class="nav-link" href="#" data-section="changes-section">
+                            <i class="bi bi-arrow-left-right me-1"></i>Изменения
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown ms-2">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" id="userMenu">
+                            <i class="bi bi-person-circle me-1"></i><span id="userName">Гость</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><span class="dropdown-item-text text-muted" id="userRole"></span></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" onclick="doLogout()"><i class="bi bi-box-arrow-right me-2"></i>Выйти</a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Главный контейнер -->
+    <div class="container main-content">
+        
+        <!-- Секция: Расписание -->
+        <section id="schedule-section" class="content-section active">
+            <!-- Выбор типа -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-search me-2"></i>Поиск расписания</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Тип поиска</label>
+                            <select class="form-select" id="searchType">
+                                <option value="group">Группа</option>
+                                <option value="lecturer">Преподаватель</option>
+                                <option value="auditory">Аудитория</option>
+                            </select>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Название / ФИО</label>
+                            <input type="text" class="form-control" id="searchInput" placeholder="Введите название...">
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-primary w-100" id="searchBtn">
+                                <i class="bi bi-search me-1"></i>Найти
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Результаты поиска -->
+                    <div id="searchResults" class="mt-3" style="display: none;">
+                        <div class="list-group" id="searchResultsList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Диапазон дат -->
+            <div class="card shadow-sm mb-4" id="dateRangeCard" style="display: none;">
+                <div class="card-body">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label">Дата начала</label>
+                            <input type="date" class="form-control" id="dateFrom">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Дата окончания</label>
+                            <input type="date" class="form-control" id="dateTo">
+                        </div>
+                        <div class="col-md-4">
+                            <button class="btn btn-success w-100" id="showScheduleBtn">
+                                <i class="bi bi-calendar-check me-1"></i>Показать расписание
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Расписание -->
+            <div id="scheduleCard" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0" id="scheduleTitle" style="font-weight: 600; font-size: 1.1rem;">
+                        <i class="bi bi-calendar-week me-2" style="color: var(--accent);"></i>Расписание
+                    </h5>
+                </div>
+                <table class="table" id="scheduleTable">
+                    <tbody id="scheduleBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Секция: Консультации (для всех) -->
+        <section id="consultations-section" class="content-section" style="display: none;">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-chat-dots me-2"></i>Консультации преподавателей</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Преподаватель (необязательно)</label>
+                            <div class="input-wrapper">
+                                <input type="text" class="form-control" id="consultFilterTeacher" placeholder="Введите фамилию...">
+                                <input type="hidden" id="consultFilterTeacherId">
+                                <div class="search-results-dropdown" id="consultFilterTeacherResults"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Дата от</label>
+                            <input type="date" class="form-control" id="consultDateFrom">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Дата до</label>
+                            <input type="date" class="form-control" id="consultDateTo">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary w-100" id="loadConsultationsBtn">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Загрузить консультации
+                    </button>
+                </div>
+            </div>
+
+            <div id="consultationsContainer"></div>
+        </section>
+
+        <!-- Секция: Изменения (только для преподавателей) -->
+        <section id="changes-section" class="content-section" style="display: none;">
+            <!-- Навигация по изменениям -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-arrow-left-right me-2"></i>Управление изменениями</h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group w-100 mb-3" role="group">
+                        <button class="btn btn-outline-primary active" data-change="transfer">
+                            <i class="bi bi-arrow-repeat me-1"></i>Перенос
+                        </button>
+                        <button class="btn btn-outline-primary" data-change="substitution">
+                            <i class="bi bi-arrow-left-right me-1"></i>Замена
+                        </button>
+                        <button class="btn btn-outline-primary" data-change="cancel">
+                            <i class="bi bi-x-circle me-1"></i>Отмена
+                        </button>
+                        <button class="btn btn-outline-primary" data-change="consultation">
+                            <i class="bi bi-chat-dots me-1"></i>Консультация
+                        </button>
+                        <button class="btn btn-outline-primary" data-change="retake">
+                            <i class="bi bi-journal-check me-1"></i>Пересдача
+                        </button>
+                    </div>
+                    
+                    <button class="btn btn-success w-100 mb-3" id="addChangeBtn">
+                        <i class="bi bi-plus-circle me-1"></i>Добавить изменение
+                    </button>
+                </div>
+            </div>
+
+            <!-- Список изменений -->
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Сохранённые изменения</h5>
+                </div>
+                <div class="card-body" id="changesList">
+                    <p class="text-muted-custom text-center">Загрузка...</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Модальное окно: Перенос -->
+    <div class="modal fade" id="transferModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-arrow-repeat me-2"></i>Перенос пары</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="transferForm">
+                        <div class="row g-3">
+                            <div class="col-md-6 input-wrapper">
+                                <label class="form-label">Преподаватель</label>
+                                <input type="text" class="form-control" id="transferTeacher" placeholder="ФИО преподавателя" required>
+                                <input type="hidden" id="transferTeacherId">
+                                <div class="search-results-dropdown" id="transferTeacherResults"></div>
+                            </div>
+                            <div class="col-md-6 input-wrapper">
+                                <label class="form-label">Группа</label>
+                                <input type="text" class="form-control" id="transferGroup" placeholder="Название группы" required>
+                                <input type="hidden" id="transferGroupId">
+                                <div class="search-results-dropdown" id="transferGroupResults"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Дата начала периода</label>
+                                <input type="date" class="form-control" id="transferDateFrom" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Дата конца периода</label>
+                                <input type="date" class="form-control" id="transferDateTo" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Пара для переноса</label>
+                                <select class="form-select" id="transferLesson" required>
+                                    <option value="">Сначала загрузите расписание</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Новая дата</label>
+                                <input type="date" class="form-control" id="transferNewDate" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Новое время</label>
+                                <select class="form-select" id="transferNewTime">
+                                    <option value="">Сначала выберите новую дату</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 input-wrapper">
+                                <label class="form-label">Аудитория (необязательно)</label>
+                                <input type="text" class="form-control" id="transferAuditory" placeholder="Название аудитории">
+                                <input type="hidden" id="transferAuditoryId">
+                                <div class="search-results-dropdown" id="transferAuditoryResults"></div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="saveTransferBtn">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно: Замена -->
+    <div class="modal fade" id="substitutionModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-arrow-left-right me-2"></i>Замена пары</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="substitutionForm">
+                        <div class="row g-3">
+                            <!-- Группа и период -->
+                            <div class="col-12">
+                                <h6 class="mb-3" style="font-weight: 600; color: var(--accent);">
+                                    <i class="bi bi-1-circle me-1"></i>Исходная пара
+                                </h6>
+                            </div>
+                            <div class="col-md-6 input-wrapper">
+                                <label class="form-label">Группа</label>
+                                <input type="text" class="form-control" id="substitutionGroup" placeholder="Название группы" required>
+                                <input type="hidden" id="substitutionGroupId">
+                                <div class="search-results-dropdown" id="substitutionGroupResults"></div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Дата начала периода</label>
+                                <input type="date" class="form-control" id="substitutionDateFrom" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Дата конца периода</label>
+                                <input type="date" class="form-control" id="substitutionDateTo" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Пара для замены</label>
+                                <select class="form-select" id="substitutionLesson" required>
+                                    <option value="">Сначала загрузите расписание</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Разделитель -->
+                            <div class="col-12"><hr class="my-2"></div>
+                            
+                            <div class="col-12">
+                                <h6 class="mb-3" style="font-weight: 600; color: var(--success-color);">
+                                    <i class="bi bi-2-circle me-1"></i>Заменяющая пара
+                                </h6>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Новая дата</label>
+                                <input type="date" class="form-control" id="substitutionNewDate" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Новое время начала</label>
+                                <input type="time" class="form-control" id="substitutionNewTimeStart" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Новое время конца</label>
+                                <input type="time" class="form-control" id="substitutionNewTimeEnd" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Новая дисциплина</label>
+                                <input type="text" class="form-control" id="substitutionNewDiscipline" placeholder="Название предмета" required>
+                            </div>
+                            <div class="col-md-6 input-wrapper">
+                                <label class="form-label">Новый преподаватель</label>
+                                <input type="text" class="form-control" id="substitutionNewTeacher" placeholder="ФИО преподавателя" required>
+                                <input type="hidden" id="substitutionNewTeacherId">
+                                <div class="search-results-dropdown" id="substitutionTeacherResults"></div>
+                            </div>
+                            <div class="col-md-6 input-wrapper">
+                                <label class="form-label">Новая аудитория (необязательно)</label>
+                                <input type="text" class="form-control" id="substitutionNewAuditory" placeholder="Название аудитории">
+                                <input type="hidden" id="substitutionNewAuditoryId">
+                                <div class="search-results-dropdown" id="substitutionAuditoryResults"></div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="saveSubstitutionBtn">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно: Отмена пары -->
+    <div class="modal fade" id="cancelModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-x-circle me-2"></i>Отмена пары</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="cancelForm">
+                        <div class="row g-3">
+                            <div class="col-md-6 input-wrapper">
+                                <label class="form-label">Группа</label>
+                                <input type="text" class="form-control" id="cancelGroup" placeholder="Название группы" required>
+                                <input type="hidden" id="cancelGroupId">
+                                <div class="search-results-dropdown" id="cancelGroupResults"></div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Дата начала периода</label>
+                                <input type="date" class="form-control" id="cancelDateFrom" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Дата конца периода</label>
+                                <input type="date" class="form-control" id="cancelDateTo" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Пара для отмены</label>
+                                <select class="form-select" id="cancelLesson" required>
+                                    <option value="">Сначала загрузите расписание</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Причина отмены (необязательно)</label>
+                                <input type="text" class="form-control" id="cancelReason" placeholder="Например: болезнь преподавателя">
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Назад</button>
+                    <button type="button" class="btn btn-danger" id="saveCancelBtn" style="background: #ff3b30; border: none;">Отменить пару</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно: Консультация -->
+    <div class="modal fade" id="consultationModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-chat-dots me-2"></i>Консультация</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="consultationForm">
+                        <div class="row g-3">
+                            <div class="col-md-6 input-wrapper">
+                                <label class="form-label">Преподаватель</label>
+                                <input type="text" class="form-control" id="consultationTeacher" placeholder="ФИО преподавателя" required>
+                                <input type="hidden" id="consultationTeacherId">
+                                <div class="search-results-dropdown" id="consultationTeacherResults"></div>
+                            </div>
+                            <div class="col-md-6 input-wrapper">
+                                <label class="form-label">Группа (необязательно)</label>
+                                <input type="text" class="form-control" id="consultationGroup" placeholder="Название группы">
+                                <input type="hidden" id="consultationGroupId">
+                                <div class="search-results-dropdown" id="consultationGroupResults"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Дата</label>
+                                <input type="date" class="form-control" id="consultationDate" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Время начала</label>
+                                <input type="time" class="form-control" id="consultationTimeStart" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Время конца</label>
+                                <input type="time" class="form-control" id="consultationTimeEnd" required>
+                            </div>
+                            <div class="col-md-6 input-wrapper">
+                                <label class="form-label">Аудитория</label>
+                                <input type="text" class="form-control" id="consultationAuditory" placeholder="Название аудитории" required>
+                                <input type="hidden" id="consultationAuditoryId">
+                                <div class="search-results-dropdown" id="consultationAuditoryResults"></div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-success" id="saveConsultationBtn">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно: Пересдача -->
+    <div class="modal fade" id="retakeModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-journal-check me-2"></i>Пересдача</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="retakeForm">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Тип пересдачи</label>
+                                <select class="form-select" id="retakeType" required>
+                                    <option value="normal">Обычная (один преподаватель)</option>
+                                    <option value="commission">Комиссионная (несколько преподавателей)</option>
+                                </select>
+                            </div>
+                            <div class="col-12" id="retakeTeachersContainer">
+                                <label class="form-label">Преподаватель #1</label>
+                                <input type="text" class="form-control mb-2 retakeTeacherInput" placeholder="ФИО преподавателя" required>
+                                <input type="hidden" class="retakeTeacherIdInput">
+                                <div class="search-results-dropdown retakeTeacherResults"></div>
+                            </div>
+                            <div class="col-md-6 input-wrapper">
+                                <label class="form-label">Группа</label>
+                                <input type="text" class="form-control" id="retakeGroup" placeholder="Название группы" required>
+                                <input type="hidden" id="retakeGroupId">
+                                <div class="search-results-dropdown" id="retakeGroupResults"></div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Дата</label>
+                                <input type="date" class="form-control" id="retakeDate" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Время начала</label>
+                                <input type="time" class="form-control" id="retakeTimeStart" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Время конца</label>
+                                <input type="time" class="form-control" id="retakeTimeEnd" required>
+                            </div>
+                            <div class="col-md-6 input-wrapper">
+                                <label class="form-label">Аудитория</label>
+                                <input type="text" class="form-control" id="retakeAuditory" placeholder="Название аудитории" required>
+                                <input type="hidden" id="retakeAuditoryId">
+                                <div class="search-results-dropdown" id="retakeAuditoryResults"></div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Дисциплина</label>
+                                <input type="text" class="form-control" id="retakeDiscipline" placeholder="Название дисциплины" required>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="saveRetakeBtn" style="background: #ff3b30; border: none;">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast уведомления -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="toast" class="toast" role="alert">
+            <div class="toast-header">
+                <i class="bi bi-info-circle me-2"></i>
+                <strong class="me-auto" id="toastTitle">Уведомление</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body" id="toastBody"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+venv/
+env/
+.venv/
+.env/
+
+# База данных (содержит пользовательские данные)
+*.db
+schedule.db
+
+# JSON с изменениями (пользовательские данные)
+schedule_changes.json
+
+# IDE
+.vscode/
+.idea/
+.qwen/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Лог-файлы
+*.log
+
+# Временные файлы
+*.tmp
+*.temp
+
+# Secrets
+.env
+.env.local
+*.key
