@@ -13,7 +13,11 @@ class DatabaseManager:
 
     def __init__(self, db_path=None):
         if db_path is None:
-            db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'schedule.db')
+            # На Vercel используем /tmp (единственное writable место)
+            if os.environ.get('VERCEL', '0') == '1':
+                db_path = '/tmp/schedule.db'
+            else:
+                db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'schedule.db')
         self.db_path = db_path
         self._init_db()
 
