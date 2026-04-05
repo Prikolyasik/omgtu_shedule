@@ -1,30 +1,29 @@
 """
-SQLite менеджер для хранения изменений расписания.
+PostgreSQL менеджер для хранения изменений расписания.
 """
 
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import json
 import os
 from datetime import datetime
 
 
 class DatabaseManager:
-    """Управление базой данных SQLite."""
+    """Управление базой данных PostgreSQL (Neon Tech)."""
 
-    def __init__(self, db_path=None):
-        if db_path is None:
-            # На Vercel используем /tmp (единственное writable место)
-            if os.environ.get('VERCEL', '0') == '1':
-                db_path = '/tmp/schedule.db'
-            else:
-                db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'schedule.db')
-        self.db_path = db_path
+    def __init__(self, connection_string=None):
+        if connection_string is None:
+            connection_string = os.environ.get(
+                'DATABASE_URL',
+                'postgresql://neondb_owner:npg_ikQn8JFfSO5B@ep-round-haze-ame9cfi3-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
+            )
+        self.connection_string = connection_string
         self._init_db()
 
     def _get_conn(self):
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
+        conn = psycopg2.connect(self.connection_string)
+        conn.cursor_factory = psycopg2.extras.RealDictCursor
         return conn
 
     def _init_db(self):
@@ -32,9 +31,9 @@ class DatabaseManager:
         conn = self._get_conn()
         cursor = conn.cursor()
 
-        cursor.executescript("""
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS transfers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 group_name TEXT NOT NULL,
                 group_id INTEGER NOT NULL,
                 teacher TEXT NOT NULL,
@@ -51,7 +50,7 @@ class DatabaseManager:
             );
 
             CREATE TABLE IF NOT EXISTS substitutions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 group_name TEXT NOT NULL,
                 group_id INTEGER NOT NULL,
                 subgroup TEXT DEFAULT '',
@@ -70,7 +69,7 @@ class DatabaseManager:
             );
 
             CREATE TABLE IF NOT EXISTS consultations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 teacher TEXT NOT NULL,
                 teacher_id INTEGER NOT NULL,
                 date TEXT NOT NULL,
@@ -83,7 +82,7 @@ class DatabaseManager:
             );
 
             CREATE TABLE IF NOT EXISTS retakes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 subtype TEXT NOT NULL DEFAULT 'normal',
                 teachers TEXT NOT NULL,
                 date TEXT NOT NULL,
@@ -97,7 +96,7 @@ class DatabaseManager:
             );
 
             CREATE TABLE IF NOT EXISTS cancellations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 group_name TEXT NOT NULL,
                 group_id INTEGER NOT NULL,
                 subgroup TEXT DEFAULT '',
@@ -120,13 +119,14 @@ class DatabaseManager:
         """)
 
         conn.commit()
+        cursor.close()
         conn.close()
 
     def migrate_from_json(self, json_path=None):
         """Мигрировать данные из JSON файла в БД."""
         if json_path is None:
             json_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'schedule_changes.json')
-        
+
         if not os.path.exists(json_path):
             return False
 
@@ -138,7 +138,7 @@ class DatabaseManager:
 
         # Проверяем, есть ли уже данные
         cursor.execute("SELECT COUNT(*) FROM transfers")
-        if cursor.fetchone()[0] > 0:
+        if cursor.fetchone()['count'] > 0:
             conn.close()
             return False  # Уже есть данные, не мигрируем
 
@@ -147,7 +147,7 @@ class DatabaseManager:
             cursor.execute("""
                 INSERT INTO transfers (group_name, group_id, teacher, teacher_id, subgroup,
                     original_date, original_time, subject, new_date, new_time, auditory, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 item.get('group', ''), item.get('group_id', 0),
                 item.get('teacher', ''), item.get('teacher_id', 0),
@@ -164,7 +164,7 @@ class DatabaseManager:
                     original_date, original_time, original_discipline, original_teacher,
                     new_date, new_time, new_discipline, new_teacher, new_teacher_id,
                     new_auditory, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 item.get('group', ''), item.get('group_id', 0),
                 item.get('subgroup', ''), item.get('original_date', ''),
@@ -180,7 +180,7 @@ class DatabaseManager:
             cursor.execute("""
                 INSERT INTO consultations (teacher, teacher_id, date, time,
                     auditory, group_name, group_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 item.get('teacher', ''), item.get('teacher_id', 0),
                 item.get('date', ''), item.get('time', ''),
@@ -193,7 +193,7 @@ class DatabaseManager:
             cursor.execute("""
                 INSERT INTO retakes (subtype, teachers, date, time, auditory,
                     discipline, group_name, group_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 item.get('subtype', 'normal'),
                 json.dumps(item.get('teachers', [])),
@@ -204,6 +204,7 @@ class DatabaseManager:
             ))
 
         conn.commit()
+        cursor.close()
         conn.close()
         return True
 
@@ -211,63 +212,75 @@ class DatabaseManager:
 
     def get_transfers(self, group_id=None):
         conn = self._get_conn()
+        cursor = conn.cursor()
         if group_id:
-            rows = conn.execute(
-                "SELECT * FROM transfers WHERE group_id = ? ORDER BY new_date, new_time",
+            cursor.execute(
+                "SELECT * FROM transfers WHERE group_id = %s ORDER BY new_date, new_time",
                 (group_id,)
-            ).fetchall()
+            )
         else:
-            rows = conn.execute(
+            cursor.execute(
                 "SELECT * FROM transfers ORDER BY new_date, new_time"
-            ).fetchall()
+            )
+        rows = cursor.fetchall()
+        cursor.close()
         conn.close()
         return [dict(r) for r in rows]
 
     def get_substitutions(self, group_id=None):
         conn = self._get_conn()
+        cursor = conn.cursor()
         if group_id:
-            rows = conn.execute(
-                "SELECT * FROM substitutions WHERE group_id = ? ORDER BY new_date, new_time",
+            cursor.execute(
+                "SELECT * FROM substitutions WHERE group_id = %s ORDER BY new_date, new_time",
                 (group_id,)
-            ).fetchall()
+            )
         else:
-            rows = conn.execute(
+            cursor.execute(
                 "SELECT * FROM substitutions ORDER BY new_date, new_time"
-            ).fetchall()
+            )
+        rows = cursor.fetchall()
+        cursor.close()
         conn.close()
         return [dict(r) for r in rows]
 
     def get_consultations(self, teacher_id=None, date_from=None, date_to=None):
         conn = self._get_conn()
+        cursor = conn.cursor()
         query = "SELECT * FROM consultations WHERE 1=1"
         params = []
 
         if teacher_id:
-            query += " AND teacher_id = ?"
+            query += " AND teacher_id = %s"
             params.append(teacher_id)
         if date_from:
-            query += " AND date >= ?"
+            query += " AND date >= %s"
             params.append(date_from)
         if date_to:
-            query += " AND date <= ?"
+            query += " AND date <= %s"
             params.append(date_to)
 
         query += " ORDER BY date, time"
-        rows = conn.execute(query, params).fetchall()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        cursor.close()
         conn.close()
         return [dict(r) for r in rows]
 
     def get_retakes(self, group_id=None):
         conn = self._get_conn()
+        cursor = conn.cursor()
         if group_id:
-            rows = conn.execute(
-                "SELECT * FROM retakes WHERE group_id = ? ORDER BY date, time",
+            cursor.execute(
+                "SELECT * FROM retakes WHERE group_id = %s ORDER BY date, time",
                 (group_id,)
-            ).fetchall()
+            )
         else:
-            rows = conn.execute(
+            cursor.execute(
                 "SELECT * FROM retakes ORDER BY date, time"
-            ).fetchall()
+            )
+        rows = cursor.fetchall()
+        cursor.close()
         conn.close()
         results = []
         for r in rows:
@@ -288,24 +301,28 @@ class DatabaseManager:
 
     def get_cancellations(self, group_id=None):
         conn = self._get_conn()
+        cursor = conn.cursor()
         if group_id:
-            rows = conn.execute(
-                "SELECT * FROM cancellations WHERE group_id = ? ORDER BY original_date, original_time",
+            cursor.execute(
+                "SELECT * FROM cancellations WHERE group_id = %s ORDER BY original_date, original_time",
                 (group_id,)
-            ).fetchall()
+            )
         else:
-            rows = conn.execute(
+            cursor.execute(
                 "SELECT * FROM cancellations ORDER BY original_date, original_time"
-            ).fetchall()
+            )
+        rows = cursor.fetchall()
+        cursor.close()
         conn.close()
         return [dict(r) for r in rows]
 
     def add_cancel(self, data):
         conn = self._get_conn()
-        conn.execute("""
+        cursor = conn.cursor()
+        cursor.execute("""
             INSERT INTO cancellations (group_name, group_id, subgroup,
                 original_date, original_time, discipline, teacher, auditory, reason, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             data.get('group', ''), data.get('group_id', 0),
             data.get('subgroup', ''), data.get('original_date', ''),
@@ -314,14 +331,16 @@ class DatabaseManager:
             data.get('reason', ''), data.get('created_at', datetime.now().isoformat())
         ))
         conn.commit()
+        cursor.close()
         conn.close()
 
     def add_transfer(self, data):
         conn = self._get_conn()
-        conn.execute("""
+        cursor = conn.cursor()
+        cursor.execute("""
             INSERT INTO transfers (group_name, group_id, teacher, teacher_id, subgroup,
                 original_date, original_time, subject, new_date, new_time, auditory, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             data.get('group', ''), data.get('group_id', 0),
             data.get('teacher', ''), data.get('teacher_id', 0),
@@ -331,16 +350,18 @@ class DatabaseManager:
             data.get('auditory', ''), data.get('created_at', datetime.now().isoformat())
         ))
         conn.commit()
+        cursor.close()
         conn.close()
 
     def add_substitution(self, data):
         conn = self._get_conn()
-        conn.execute("""
+        cursor = conn.cursor()
+        cursor.execute("""
             INSERT INTO substitutions (group_name, group_id, subgroup,
                 original_date, original_time, original_discipline, original_teacher,
                 new_date, new_time, new_discipline, new_teacher, new_teacher_id,
                 new_auditory, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             data.get('group', ''), data.get('group_id', 0),
             data.get('subgroup', ''), data.get('original_date', ''),
@@ -351,14 +372,16 @@ class DatabaseManager:
             data.get('new_auditory', ''), data.get('created_at', datetime.now().isoformat())
         ))
         conn.commit()
+        cursor.close()
         conn.close()
 
     def add_consultation(self, data):
         conn = self._get_conn()
-        conn.execute("""
+        cursor = conn.cursor()
+        cursor.execute("""
             INSERT INTO consultations (teacher, teacher_id, date, time,
                 auditory, group_name, group_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             data.get('teacher', ''), data.get('teacher_id', 0),
             data.get('date', ''), data.get('time', ''),
@@ -366,14 +389,16 @@ class DatabaseManager:
             data.get('group_id'), data.get('created_at', datetime.now().isoformat())
         ))
         conn.commit()
+        cursor.close()
         conn.close()
 
     def add_retake(self, data):
         conn = self._get_conn()
-        conn.execute("""
+        cursor = conn.cursor()
+        cursor.execute("""
             INSERT INTO retakes (subtype, teachers, date, time, auditory,
                 discipline, group_name, group_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             data.get('subtype', 'normal'),
             json.dumps(data.get('teachers', []), ensure_ascii=False),
@@ -383,4 +408,5 @@ class DatabaseManager:
             data.get('created_at', datetime.now().isoformat())
         ))
         conn.commit()
+        cursor.close()
         conn.close()

@@ -44,3 +44,6 @@ desktop.ini
 .env
 .env.local
 *.key
+
+# Но разрешаем example для документации
+!.env.example
