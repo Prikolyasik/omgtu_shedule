@@ -11,8 +11,5 @@
       "src": "/(.*)",
       "dest": "backend/app.py"
     }
-  ],
-  "env": {
-    "DATABASE_URL": "postgresql://neondb_owner:npg_ikQn8JFfSO5B@ep-round-haze-ame9cfi3-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
-  }
+  ]
 }
